@@ -1,23 +1,24 @@
-import { ethers } from "ethers";
-import chalk from "chalk";
-import inquirer from "inquirer";
+import { BiconomySmartAccount, DEFAULT_ENTRYPOINT_ADDRESS } from "@biconomy/account"
+import { Bundler } from "@biconomy/bundler"
 import {
-    BiconomySmartAccount,
-    DEFAULT_ENTRYPOINT_ADDRESS,
-  } from "@biconomy/account";
-  import { Bundler } from "@biconomy/bundler";
-  import { BiconomyPaymaster } from "@biconomy/paymaster";
-import {
+  BiconomyPaymaster,
   IHybridPaymaster,
   PaymasterFeeQuote,
   PaymasterMode,
   SponsorUserOperationDto,
-} from "@biconomy/paymaster";
-import config from "../../config.json";
+} from "@biconomy/paymaster"
+import chalk from "chalk"
+import { ethers } from "ethers"
+import inquirer from "inquirer"
+import config from "../../config.json"
 
-export const nativeTransferPayERC20 = async (
-    to: string,
-    amount: number
+const { ERC20ABI } = require('../abi')
+
+export const erc1155TransferPayERC20 = async (
+    recipientAddress: string,
+    amount: number,
+    tokenAddress: string,
+    tokenId: number,
   ) => {
   // ------------------------STEP 1: Initialise Biconomy Smart Account SDK--------------------------------//
 
@@ -56,20 +57,31 @@ export const nativeTransferPayERC20 = async (
   // passing accountIndex is optional, by default it will be 0. You may use different indexes for generating multiple counterfactual smart accounts for the same user
   const biconomySmartAccount = await biconomyAccount.init( {accountIndex: config.accountIndex} );
 
-
+  const scwAddr = await biconomyAccount.getSmartAccountAddress();
+  const isDeployed = await biconomyAccount.isAccountDeployed(scwAddr);
+  console.log(chalk.cyan(`Deployment status: `, scwAddr, isDeployed));
 
 
   // ------------------------STEP 2: Build Partial User op from your user Transaction/s Request --------------------------------//
 
-  // // transfer native asset
+  // generate ERC1155 transfer data
+  // Encode an ERC-1155 token transfer to recipient of the specified amount
+  const erc1155Interface = new ethers.utils.Interface([
+    "function safeTransferFrom(address _from, address _to, uint256 _id, uint256 _value, bytes _data)",
+  ])
+  //const data = erc1155Interface.encodeFunctionData("safeTransferFrom", [fromAddr, to, nft.tokenId, amt, []])
+  const data = erc1155Interface.encodeFunctionData("safeTransferFrom", [scwAddr, recipientAddress, tokenId, amount, []])
   const transaction = {
-    to: to || "0x0000000000000000000000000000000000000000",
-    data: "0x",
-    value: ethers.utils.parseEther(amount.toString()),
-  };
+    from: scwAddr,
+    to: tokenAddress,
+    data: data,
+  }
+
+  console.log(chalk.cyan(`Transaction : ${JSON.stringify(transaction)}`));
 
   // build partial userOp
   let partialUserOp = await biconomySmartAccount.buildUserOp([transaction]);
+  console.log(chalk.cyan(`partialUserOp : ${JSON.stringify(partialUserOp)}`));
 
   let finalUserOp = partialUserOp;
 
@@ -96,7 +108,7 @@ export const nativeTransferPayERC20 = async (
 
   const feeQuotes = feeQuotesResponse.feeQuotes as PaymasterFeeQuote[];
   const spender = feeQuotesResponse.tokenPaymasterAddress || "";
-
+  console.log(chalk.cyan(`feeQuotes : ${JSON.stringify(feeQuotes)}`));
 
   // Generate list of options for the user to select
   const choices = feeQuotes?.map((quote: any, index: number) => ({
@@ -113,6 +125,7 @@ export const nativeTransferPayERC20 = async (
       },
     ]);
   const selectedFeeQuote = feeQuotes[selectedOption];
+  console.log(chalk.cyan(`selectedFeeQuote : ${JSON.stringify(selectedFeeQuote)}`));
 
 
 
@@ -130,7 +143,7 @@ export const nativeTransferPayERC20 = async (
         maxApproval: false,
       }
     );
-
+  console.log(chalk.cyan(`finalUserOp : ${JSON.stringify(finalUserOp)}`));
 
 
   // ------------------------STEP 4: Get Paymaster and Data from Biconomy Paymaster --------------------------------//
@@ -150,7 +163,9 @@ export const nativeTransferPayERC20 = async (
         finalUserOp,
         paymasterServiceData
       );
+    console.log(chalk.cyan(`paymasterAndDataWithLimits : ${JSON.stringify(paymasterAndDataWithLimits)}`));
     finalUserOp.paymasterAndData = paymasterAndDataWithLimits.paymasterAndData;
+    console.log(chalk.cyan(`finalUserOp : with paymasterData : ${JSON.stringify(finalUserOp)}`));
 
     // below code is only needed if you sent the glaf calculateGasLimits = true
     /*if (

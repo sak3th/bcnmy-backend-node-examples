@@ -21,7 +21,7 @@ export const erc20TransferPayERC20 = async (
     amount: number,
     tokenAddress: string
   ) => {
-  // ------------------------STEP 1: Initialise Biconomy Smart Account SDK--------------------------------//  
+  // ------------------------STEP 1: Initialise Biconomy Smart Account SDK--------------------------------//
 
 
 
@@ -43,13 +43,13 @@ export const erc20TransferPayERC20 = async (
   });
 
   // Biconomy smart account config
-  // Note that paymaster and bundler are optional. You can choose to create new instances of this later and make account API use 
+  // Note that paymaster and bundler are optional. You can choose to create new instances of this later and make account API use
   const biconomySmartAccountConfig = {
     signer: signer,
     chainId: config.chainId,
     rpcUrl: config.rpcUrl,
-    paymaster: paymaster, 
-    bundler: bundler, 
+    paymaster: paymaster,
+    bundler: bundler,
   };
 
   // create biconomy smart account instance
@@ -58,7 +58,9 @@ export const erc20TransferPayERC20 = async (
   // passing accountIndex is optional, by default it will be 0. You may use different indexes for generating multiple counterfactual smart accounts for the same user
   const biconomySmartAccount = await biconomyAccount.init( {accountIndex: config.accountIndex} );
 
-
+  const scwAddr = await biconomyAccount.getSmartAccountAddress();
+  const isDeployed = await biconomyAccount.isAccountDeployed(scwAddr);
+  console.log(chalk.cyan(`Deployment status: `, scwAddr, isDeployed));
 
 
   // ------------------------STEP 2: Build Partial User op from your user Transaction/s Request --------------------------------//
@@ -79,9 +81,11 @@ export const erc20TransferPayERC20 = async (
     to: tokenAddress,
     data,
   };
+  console.log(chalk.cyan(`Transaction : ${JSON.stringify(transaction)}`));
 
-  // build partial userOp 
+  // build partial userOp
   let partialUserOp = await biconomySmartAccount.buildUserOp([transaction]);
+  console.log(chalk.cyan(`partialUserOp : ${JSON.stringify(partialUserOp)}`));
 
   let finalUserOp = partialUserOp;
 
@@ -108,8 +112,8 @@ export const erc20TransferPayERC20 = async (
 
   const feeQuotes = feeQuotesResponse.feeQuotes as PaymasterFeeQuote[];
   const spender = feeQuotesResponse.tokenPaymasterAddress || "";
+  console.log(chalk.cyan(`feeQuotes : ${JSON.stringify(feeQuotes)}`));
 
-  
   // Generate list of options for the user to select
   const choices = feeQuotes?.map((quote: any, index: number) => ({
       name: `Option ${index + 1}: ${quote.maxGasFee}: ${quote.symbol} `,
@@ -125,12 +129,13 @@ export const erc20TransferPayERC20 = async (
       },
     ]);
   const selectedFeeQuote = feeQuotes[selectedOption];
+  console.log(chalk.cyan(`selectedFeeQuote : ${JSON.stringify(selectedFeeQuote)}`));
 
 
 
 
   // ------------------------STEP 3: Once you have selected feeQuote (use has chosen token to pay with) get updated userOp which checks for paymaster approval and appends approval tx--------------------------------//
-    
+
 
 
 
@@ -142,10 +147,10 @@ export const erc20TransferPayERC20 = async (
         maxApproval: false,
       }
     );
+  console.log(chalk.cyan(`finalUserOp : ${JSON.stringify(finalUserOp)}`));
 
-  
 
-  // ------------------------STEP 4: Get Paymaster and Data from Biconomy Paymaster --------------------------------//  
+  // ------------------------STEP 4: Get Paymaster and Data from Biconomy Paymaster --------------------------------//
 
 
 
@@ -162,7 +167,9 @@ export const erc20TransferPayERC20 = async (
         finalUserOp,
         paymasterServiceData
       );
+    console.log(chalk.cyan(`paymasterAndDataWithLimits : ${JSON.stringify(paymasterAndDataWithLimits)}`));
     finalUserOp.paymasterAndData = paymasterAndDataWithLimits.paymasterAndData;
+    console.log(chalk.cyan(`finalUserOp : with paymasterData : ${JSON.stringify(finalUserOp)}`));
 
     // below code is only needed if you sent the glaf calculateGasLimits = true
     /*if (
@@ -173,14 +180,14 @@ export const erc20TransferPayERC20 = async (
 
       // Returned gas limits must be replaced in your op as you update paymasterAndData.
       // Because these are the limits paymaster service signed on to generate paymasterAndData
-      // If you receive AA34 error check here..   
+      // If you receive AA34 error check here..
 
       finalUserOp.callGasLimit = paymasterAndDataWithLimits.callGasLimit;
       finalUserOp.verificationGasLimit =
         paymasterAndDataWithLimits.verificationGasLimit;
       finalUserOp.preVerificationGas =
         paymasterAndDataWithLimits.preVerificationGas;
-    }*/ 
+    }*/
   } catch (e) {
     console.log("error received ", e);
   }
@@ -195,7 +202,7 @@ export const erc20TransferPayERC20 = async (
 
   console.log(chalk.blue(`userOp: ${JSON.stringify(finalUserOp, null, "\t")}`));
 
-  // Below function gets the signature from the user (signer provided in Biconomy Smart Account) 
+  // Below function gets the signature from the user (signer provided in Biconomy Smart Account)
   // and also send the full op to attached bundler instance
 
   try {
